@@ -19,7 +19,7 @@ from .prompts import (
     REVISE_SYSTEM,
     REVISE_USER,
 )
-from .research import fetch_website_content, search_google_places, slugify
+from .research import fetch_website_content, search_google_places, search_serper, slugify
 from .state import BioState
 
 try:
@@ -177,6 +177,40 @@ async def research_website_from_places(state: BioState) -> Dict[str, Any]:
     }
 
 
+@traceable(name="research_serper")
+async def research_serper_node(state: BioState) -> Dict[str, Any]:
+    """Search SerperDev for additional business info."""
+    print("  🔎 Searching SerperDev for %s..." % state["name"])
+    serper_data = await search_serper(
+        state["name"], state["address"], state["region"],
+        _config.serper_api_key,
+    )
+
+    sources = list(state.get("sources", []))
+    research_context = state.get("research_context", "")
+
+    if serper_data.get("found"):
+        from datetime import datetime, timezone
+        sources.append({
+            "name": "SerperDev",
+            "type": "serper_search",
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            "raw_excerpt_char_count": len(serper_data.get("raw_excerpt", "")),
+            "notes": "%d organic results" % len(serper_data.get("results", [])),
+        })
+        if serper_data.get("raw_excerpt"):
+            research_context = research_context + "\n\n=== Web Search Results ===\n" + serper_data["raw_excerpt"]
+    else:
+        reason = serper_data.get("error", "no results")
+        print("  ℹ️  SerperDev skipped: %s" % reason)
+
+    return {
+        "serper_data": serper_data,
+        "sources": sources,
+        "research_context": research_context,
+    }
+
+
 @traceable(name="decide_sufficiency")
 def decide_sufficiency(state: BioState) -> Dict[str, Any]:
     """Decide if we have enough research data to write a bio."""
@@ -302,7 +336,12 @@ def finalize_and_validate(state: BioState) -> Dict[str, Any]:
     if iteration >= _config.max_iterations and not review_passed:
         print("  ⚠️  Max iterations reached with failing review - using fallback")
         description = "unable to create bio due to lack of information found online."
-        confidence = 0.0
+        return {
+            "description": description,
+            "confidence": confidence,
+            "status": "fallback",
+            "token_usage": _llm.usage.by_step.copy(),
+        }
 
     # Final markdown strip
     description = _strip_markdown(description)

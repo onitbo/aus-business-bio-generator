@@ -13,6 +13,7 @@ from .nodes import (
     finalize_and_validate,
     ingest_input,
     research_places,
+    research_serper_node,
     research_website_from_places,
     review_bio,
     revise_bio,
@@ -53,6 +54,7 @@ def build_graph(config: Config) -> StateGraph:
     graph.add_node("ingest_input", ingest_input)
     graph.add_node("research_places", research_places)
     graph.add_node("research_website_from_places", research_website_from_places)
+    graph.add_node("research_serper", research_serper_node)
     graph.add_node("decide_sufficiency", decide_sufficiency)
     graph.add_node("draft_bio", draft_bio)
     graph.add_node("review_bio", review_bio)
@@ -66,7 +68,8 @@ def build_graph(config: Config) -> StateGraph:
     # Add edges
     graph.add_edge("ingest_input", "research_places")
     graph.add_edge("research_places", "research_website_from_places")
-    graph.add_edge("research_website_from_places", "decide_sufficiency")
+    graph.add_edge("research_website_from_places", "research_serper")
+    graph.add_edge("research_serper", "decide_sufficiency")
     graph.add_edge("decide_sufficiency", "draft_bio")
     graph.add_edge("draft_bio", "review_bio")
 
