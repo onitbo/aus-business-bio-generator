@@ -14,6 +14,8 @@ from .llm import LLMClient
 from .prompts import (
     DRAFT_SYSTEM,
     DRAFT_USER,
+    GENERIC_FALLBACK_SYSTEM,
+    GENERIC_FALLBACK_USER,
     REVIEW_SYSTEM,
     REVIEW_USER,
     REVISE_SYSTEM,
@@ -226,17 +228,74 @@ def decide_sufficiency(state: BioState) -> Dict[str, Any]:
     return {"sufficient": sufficient}
 
 
+def _has_any_research_data(state: BioState) -> bool:
+    """Check if we have ANY research data at all."""
+    places_data = state.get("places_data", {})
+    website_data = state.get("website_data", {})
+    serper_data = state.get("serper_data", {})
+
+    if places_data.get("found"):
+        return True
+    if website_data.get("fetched"):
+        return True
+    if serper_data.get("found"):
+        return True
+    return False
+
+
+def _get_business_types(state: BioState) -> str:
+    """Extract business types from places data."""
+    places_data = state.get("places_data", {})
+    types = places_data.get("types", [])
+    if types:
+        # Clean up Google Places type strings (e.g. "point_of_interest" -> "point of interest")
+        return ", ".join(t.replace("_", " ") for t in types if t not in ("point_of_interest", "establishment"))
+    return "unknown"
+
+
+def _generate_generic_fallback(state: BioState) -> Dict[str, Any]:
+    """Generate a short generic description using whatever info is available."""
+    if not _has_any_research_data(state):
+        return {
+            "description": "unable to create bio due to lack of information found online.",
+            "confidence": 0.0,
+            "status": "fallback",
+        }
+
+    print("  📝 Generating generic fallback description...")
+    business_types = _get_business_types(state)
+    context = state.get("research_context", "Business: %s\nAddress: %s, %s" % (
+        state["name"], state["address"], state["region"]
+    ))
+
+    generic = _llm.generate(
+        GENERIC_FALLBACK_SYSTEM,
+        GENERIC_FALLBACK_USER.format(
+            name=state["name"],
+            address=state["address"],
+            region=state["region"],
+            business_types=business_types,
+            context=context,
+        ),
+        step="generic_fallback",
+    )
+    generic = _strip_markdown(generic)
+
+    return {
+        "description": generic,
+        "confidence": state.get("confidence", 0.1),
+        "status": "fallback",
+        "token_usage": _llm.usage.by_step.copy(),
+    }
+
+
 @traceable(name="draft_bio")
 def draft_bio(state: BioState) -> Dict[str, Any]:
     """Draft the business bio using LLM."""
     print("  ✍️  Drafting bio...")
 
     if not state.get("sufficient", True):
-        return {
-            "description": "unable to create bio due to lack of information found online.",
-            "confidence": 0.0,
-            "status": "fallback",
-        }
+        return _generate_generic_fallback(state)
 
     draft = _llm.generate(
         DRAFT_SYSTEM,
@@ -332,16 +391,10 @@ def finalize_and_validate(state: BioState) -> Dict[str, Any]:
     iteration = state.get("iteration", 0)
     description = state.get("description", "")
 
-    # If max iterations reached and still failing, use fallback
+    # If max iterations reached and still failing, generate generic fallback
     if iteration >= _config.max_iterations and not review_passed:
-        print("  ⚠️  Max iterations reached with failing review - using fallback")
-        description = "unable to create bio due to lack of information found online."
-        return {
-            "description": description,
-            "confidence": confidence,
-            "status": "fallback",
-            "token_usage": _llm.usage.by_step.copy(),
-        }
+        print("  ⚠️  Max iterations reached with failing review - generating generic fallback")
+        return _generate_generic_fallback(state)
 
     # Final markdown strip
     description = _strip_markdown(description)

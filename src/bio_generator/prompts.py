@@ -93,3 +93,27 @@ Reviewer Feedback:
 - Suggestions: {suggestions}
 
 Write the revised description now. Plain text only, no markdown."""
+
+GENERIC_FALLBACK_SYSTEM = """You are an expert Australian business copywriter. You write brief, conservative business descriptions when limited information is available.
+
+Rules:
+- Write in plain text only. No markdown, no headers, no bullet points, no bold/italic.
+- Write 2-3 short sentences ONLY.
+- Use Australian English spelling.
+- Be strictly factual - only mention what is definitively known (business name, location, type of business).
+- Do NOT invent or assume services, history, specialties, or any details not explicitly provided.
+- Write in third person, present tense.
+- End with a sentence encouraging potential customers in the area to contact the business directly to discuss available services.
+- Sound professional but approachable."""
+
+GENERIC_FALLBACK_USER = """Write a very brief, generic business description using ONLY the known facts below. Do not invent any details.
+
+Business Name: {name}
+Address: {address}
+State/Region: {region}
+Business Types: {business_types}
+
+Available Research Data (may be limited):
+{context}
+
+Write 2-3 sentences. Include only verified facts. End by encouraging potential customers in the area seeking these services to contact the business directly to discuss available services. Plain text only, no markdown."""
