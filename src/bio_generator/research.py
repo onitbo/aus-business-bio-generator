@@ -93,6 +93,54 @@ def _summarise_place(place, details):
     return "\n".join(parts)
 
 
+async def search_serper(name: str, address: str, region: str, api_key: str) -> Dict[str, Any]:
+    """Search SerperDev for additional business information. Gracefully returns empty on failure."""
+    if not api_key:
+        return {"found": False, "results": [], "error": "No SERPER_API_KEY configured"}
+
+    query = "{} {} {} Australia".format(name, address, region)
+    url = "https://api.serper.dev/search"
+    headers = {
+        "X-API-KEY": api_key,
+        "Content-Type": "application/json",
+    }
+    payload = {"q": query, "gl": "au", "num": 5}
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        return {"found": False, "results": [], "error": str(e)}
+
+    organic = data.get("organic", [])
+    results = []  # type: List[Dict[str, Any]]
+    for item in organic:
+        results.append({
+            "title": item.get("title", ""),
+            "link": item.get("link", ""),
+            "snippet": item.get("snippet", ""),
+        })
+
+    return {
+        "found": bool(results),
+        "results": results,
+        "raw_excerpt": _summarise_serper(results),
+    }
+
+
+def _summarise_serper(results: List[Dict[str, Any]]) -> str:
+    """Build a text summary from SerperDev results for the LLM."""
+    parts = []  # type: List[str]
+    for i, r in enumerate(results, 1):
+        snippet = r.get("snippet", "")
+        title = r.get("title", "")
+        if snippet:
+            parts.append("Result {}: {} - {}".format(i, title, snippet))
+    return "\n".join(parts)
+
+
 async def fetch_website_content(url, max_chars=3000):
     """Fetch and extract text from a business website."""
     if not url:
@@ -125,7 +173,7 @@ def _html_to_text(html):
     return text
 
 
-async def gather_research(name, address, region, api_key):
+async def gather_research(name, address, region, api_key, serper_api_key=""):
     """Run all research steps and return combined data."""
     retrieved_at = datetime.now(timezone.utc).isoformat()
 
@@ -154,15 +202,29 @@ async def gather_research(name, address, region, api_key):
             "notes": "Extracted from business website",
         })
 
+    # SerperDev search
+    serper_data = await search_serper(name, address, region, serper_api_key)
+    if serper_data.get("found"):
+        sources.append({
+            "name": "SerperDev",
+            "type": "serper_search",
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            "raw_excerpt_char_count": len(serper_data.get("raw_excerpt", "")),
+            "notes": "{} organic results".format(len(serper_data.get("results", []))),
+        })
+
     context_parts = []
     if places_data.get("raw_excerpt"):
         context_parts.append("=== Google Places Data ===\n" + places_data["raw_excerpt"])
     if website_data.get("content"):
         context_parts.append("=== Website Content ===\n" + website_data["content"])
+    if serper_data.get("raw_excerpt"):
+        context_parts.append("=== Web Search Results ===\n" + serper_data["raw_excerpt"])
 
     return {
         "context": "\n\n".join(context_parts),
         "sources": sources,
         "places_data": places_data,
         "website_data": website_data,
+        "serper_data": serper_data,
     }

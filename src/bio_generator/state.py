@@ -16,6 +16,7 @@ class BioState(TypedDict, total=False):
     # Research
     places_data: Dict[str, Any]
     website_data: Dict[str, Any]
+    serper_data: Dict[str, Any]
     research_context: str
     sources: List[Dict[str, Any]]
 

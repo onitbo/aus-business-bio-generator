@@ -17,7 +17,8 @@ class Config:
     model_provider: str = "anthropic"
     model_name: str = "claude-opus-4-6"
     model_temperature: float = 0.7
-    max_iterations: int = 3
+    serper_api_key: str = ""
+    max_iterations: int = 2
     target_confidence: float = 0.8
     output_dir: str = "outputs"
     langchain_tracing: bool = False
@@ -43,10 +44,11 @@ class Config:
         return cls(
             google_places_api_key=os.getenv("GOOGLE_PLACES_API_KEY", ""),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+            serper_api_key=os.getenv("SERPER_API_KEY", ""),
             model_provider=os.getenv("MODEL_PROVIDER", "anthropic"),
             model_name=os.getenv("MODEL_NAME", "claude-opus-4-6"),
             model_temperature=float(os.getenv("MODEL_TEMPERATURE", "0.7")),
-            max_iterations=int(os.getenv("MAX_ITERATIONS", "3")),
+            max_iterations=int(os.getenv("MAX_ITERATIONS", "2")),
             target_confidence=float(os.getenv("TARGET_CONFIDENCE", "0.8")),
             output_dir=os.getenv("OUTPUT_DIR", "outputs"),
             langchain_tracing=tracing,

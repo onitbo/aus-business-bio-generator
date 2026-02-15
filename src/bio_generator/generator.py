@@ -86,7 +86,7 @@ async def generate_bio(name, address, region, config):
     # Step 1: Research
     print("  Researching {}...".format(name))
     try:
-        research = await gather_research(name, address, region, config.google_places_api_key)
+        research = await gather_research(name, address, region, config.google_places_api_key, config.serper_api_key)
     except Exception as e:
         errors.append("Research failed: {}".format(e))
         research = {
@@ -146,9 +146,11 @@ async def generate_bio(name, address, region, config):
             )
             description = _strip_markdown(description)
     else:
-        print("  Max iterations reached (confidence: {})".format(confidence))
+        print("  Max iterations reached (confidence: {}) - using fallback".format(confidence))
+        description = "unable to create bio due to lack of information found online."
 
-    description = _strip_markdown(description)
+    if description != "unable to create bio due to lack of information found online.":
+        description = _strip_markdown(description)
     finished_at = datetime.now(timezone.utc)
 
     metadata = {
@@ -168,7 +170,7 @@ async def generate_bio(name, address, region, config):
         "sources": _serialize_sources(sources),
         "token_usage": llm.usage.to_dict(),
         "confidence": confidence,
-        "status": "ok" if not errors else "partial",
+        "status": "fallback" if description == "unable to create bio due to lack of information found online." else ("ok" if not errors else "partial"),
         "errors": errors,
         "model_info": {
             "provider": config.model_provider,
